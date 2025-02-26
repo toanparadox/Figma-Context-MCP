@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { FigmaService } from "./services/figma";
 import express, { Request, Response } from "express";
@@ -19,6 +19,7 @@ export class FigmaMcpServer {
     });
 
     this.registerTools();
+    this.registerResources();
   }
 
   private registerTools(): void {
@@ -58,6 +59,7 @@ export class FigmaMcpServer {
     this.server.tool(
       "get_node",
       "Get layout information about a specific node in a Figma file",
+
       {
         fileKey: z.string().describe("The key of the Figma file containing the node"),
         nodeId: z.string().describe("The ID of the node to fetch"),
@@ -79,6 +81,77 @@ export class FigmaMcpServer {
           console.error(`Error fetching node ${nodeId} from file ${fileKey}:`, error);
           return {
             content: [{ type: "text", text: `Error fetching node: ${error}` }],
+          };
+        }
+      },
+    );
+
+    // this.server.tool(
+    //   "get_node_image",
+    //   "Get an image of a node from a Figma file",
+    //   {
+    //     fileKey: z.string().describe("The key of the Figma file containing the node"),
+    //     nodeId: z.string().describe("The ID of the node to fetch"),
+    //   },
+    //   async ({ fileKey, nodeId }) => {
+    //     try {
+    //       console.log(`Fetching image for node: ${nodeId} from file: ${fileKey}`);
+    //       const imageUrl = await this.figmaService.getNodeImage(fileKey, nodeId);
+    //       const imageData = await this.figmaService.fetchImageData(imageUrl);
+    //       return {
+    //         content: [{ type: "image", mimeType: "image/png", data: imageData }],
+    //       };
+    //     } catch (error) {
+    //       console.error(`Error fetching image for node ${nodeId} from file ${fileKey}:`, error);
+    //       return {
+    //         content: [{ type: "text", text: `Error fetching image: ${error}` }],
+    //       };
+    //     }
+    //   },
+    // );
+  }
+
+  private registerResources(): void {
+    // Resource to get an image of a node
+    this.server.resource(
+      "get_node_image",
+      new ResourceTemplate("figma://image/{fileKey}/{nodeId}", {
+        list: undefined,
+      }),
+      {
+        description:
+          "Get an image of a node from a Figma file, useful to understand the layout of a node when metadata isn't enough",
+        mimeType: "image/png",
+      },
+      async (uri, { fileKey, nodeId }) => {
+        try {
+          console.log(`Fetching image for node: ${nodeId} from file: ${fileKey}`);
+          // Get the image URL from Figma
+          const imageUrl = await this.figmaService.getNodeImage(
+            fileKey as string,
+            nodeId as string,
+          );
+          // Fetch the actual image data
+          const imageData = await this.figmaService.fetchImageData(imageUrl);
+          console.log(`Successfully fetched image for node: ${nodeId}: ${imageUrl}`);
+          return {
+            contents: [
+              {
+                uri: uri.href,
+                mimeType: "image/png",
+                blob: imageData,
+              },
+            ],
+          };
+        } catch (error) {
+          console.error(`Error fetching image for node ${nodeId} from file ${fileKey}:`, error);
+          return {
+            contents: [
+              {
+                uri: uri.href,
+                text: `Error fetching image: ${error}`,
+              },
+            ],
           };
         }
       },

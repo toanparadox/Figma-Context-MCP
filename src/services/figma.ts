@@ -6,7 +6,11 @@ import {
   parseFigmaResponse,
   SimplifiedDesign,
 } from "./simplify-node-response";
-import type { GetFileResponse, GetFileNodesResponse } from "@figma/rest-api-spec";
+import type {
+  GetFileResponse,
+  GetFileNodesResponse,
+  GetImagesResponse,
+} from "@figma/rest-api-spec";
 
 export class FigmaService {
   private readonly apiKey: string;
@@ -61,6 +65,58 @@ export class FigmaService {
     const simplifiedResponse = parseFigmaResponse(response);
     writeLogs("figma-simplified.json", simplifiedResponse);
     return simplifiedResponse;
+  }
+
+  /**
+   * Get an image for a specific node in a Figma file
+   * @param fileKey The key of the Figma file
+   * @param nodeId The ID of the node to get an image for
+   * @returns The image URL
+   */
+  async getNodeImage(fileKey: string, nodeId: string): Promise<string> {
+    try {
+      const formattedNodeId = nodeId.replace("-", ":");
+      // First, we need to get the image URLs from the Figma API
+      const endpoint = `/images/${fileKey}?ids=${formattedNodeId}&scale=1&format=png`;
+
+      const response = await this.request<GetImagesResponse>(endpoint);
+
+      if (response.err) {
+        throw new Error(response.err);
+      }
+
+      const imageUrl = response.images[formattedNodeId];
+
+      if (!imageUrl) {
+        throw new Error(`No image URL found for node ${formattedNodeId}`);
+      }
+
+      return imageUrl;
+    } catch (error) {
+      console.error(`Failed to get image for node ${nodeId} from file ${fileKey}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch the actual image data from a Figma image URL
+   * @param imageUrl The URL of the image to fetch
+   * @returns The image data as a base64 string
+   */
+  async fetchImageData(imageUrl: string): Promise<string> {
+    try {
+      const response = await axios.get(imageUrl, {
+        responseType: "arraybuffer",
+      });
+
+      // Convert the image data to a base64 string
+      const base64 = Buffer.from(response.data, "binary").toString("base64");
+
+      return base64;
+    } catch (error) {
+      console.error("Failed to fetch image data:", error);
+      throw error;
+    }
   }
 }
 
